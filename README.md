@@ -4,7 +4,7 @@
 
 > Factum: The Art of Getting Things Done.
 >
->                       -- ChatGPT 4o mini
+> -- ChatGPT 4o mini
 
 **❗️❗️NOTE: This application is generated entirely by ChatGPT models including this readme, the logo, the actual bash script and the test script. I am just the "navigator" of this pair programming project wherea, ChatGPT is the "driver". Everything is tested and before publishing this repository. The entire project with multiple prompting and asking ChatGPT for correction took able a morning of work. If you have any questions, do raise it in issue.**
 
