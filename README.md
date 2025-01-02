@@ -1,10 +1,10 @@
 # 🎯 Factum
 
-[!image](./logo.webp)
+![image](./logo.webp)
 
 > Factum: The Art of Getting Things Done.
 >
-> - ChatGPT 4o mini
+>                       -- ChatGPT 4o mini
 
 **❗️❗️NOTE: This application is generated entirely by ChatGPT models including this readme, the actuall bash script and the test script. All vetted / tested by me before publishing this repository. The entire project with multiple prompting and asking ChatGPT for correction took able a morning of work. If you have any questions, do raise it in issue.**
 
