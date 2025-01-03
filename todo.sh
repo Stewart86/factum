@@ -644,6 +644,54 @@ list_tasks() {
     echo -e "$header\n$table_content" | gum table --border normal --header.foreground 2 --print -s "|"
 }
 
+show_task_detail() {
+    id="$1"
+
+    if [ -z "$id" ]; then
+        id=$(gum input --placeholder "Enter task ID to show details 📋")
+        [ -z "$id" ] && return
+    fi
+
+    task=$(sqlite3 -separator $'\t' "$DATABASE" "
+    SELECT id, title, status, due_date, end_date, description, recurring_expression, interval_days
+    FROM tasks 
+    WHERE id = $id;")
+
+    if [ -z "$task" ]; then
+        gum style --foreground 1 "❌ Task ID $id does not exist."
+        return
+    fi
+
+    IFS=$'\t' read -r id title status due_date end_date description recurring_expression interval_days <<<"$task"
+
+    # Determine human-readable status
+    case "$status" in
+    pending) status_text="Pending" ;;
+    completed) status_text="Completed" ;;
+    archived) status_text="Archived" ;;
+    *) status_text="Unknown" ;;
+    esac
+
+    # Determine human-readable recurrence
+    if [ -n "$interval_days" ]; then
+        human_readable_recurrence="Every $interval_days day(s)"
+    elif [ "$recurring_expression" != "none" ] && [ -n "$recurring_expression" ]; then
+        human_readable_recurrence=$(explain_recurring_expression "$recurring_expression")
+    else
+        human_readable_recurrence="—"
+    fi
+
+    # Prepare the task details
+    echo "ID: $id"
+    echo "Title: $title"
+    [ -n "$description" ] && echo "Description: $description"
+    echo "Status: $status_text"
+    echo "Due Date: $due_date"
+    [ -n "$end_date" ] && echo "End Date: $end_date"
+    [ "$human_readable_recurrence" != "—" ] && echo "Recurrence: $human_readable_recurrence"
+    [ -n "$interval_days" ] && echo "Interval in Days: $interval_days"
+}
+
 # Update a task
 update_task() {
     id="$1"
@@ -1002,6 +1050,17 @@ show_help() {
     echo "If no options are provided, the script will run in interactive mode."
 }
 
+nuke_database() {
+    gum confirm "🚨 Are you sure you want to delete all tasks? This action cannot be undone." && confirm="true"
+    if [ "$confirm" == "true" ]; then
+        sqlite3 "$DATABASE" "DROP TABLE IF EXISTS tasks;"
+        initialize_database
+        gum style --foreground 212 "✅ All tasks deleted successfully!"
+    else
+        gum style --foreground 3 "❌ Deletion cancelled."
+    fi
+}
+
 main() {
     initialize_database
     load_plugins
@@ -1020,6 +1079,9 @@ main() {
         --list)
             list_tasks "$@"
             ;;
+        --detail)
+            show_task_detail "$@"
+            ;;
         --update)
             update_task "$@"
             ;;
@@ -1031,6 +1093,9 @@ main() {
             ;;
         --help)
             show_help
+            ;;
+        --nuke)
+            nuke_database
             ;;
         *)
             # If not a built-in command, check for plugin commands
