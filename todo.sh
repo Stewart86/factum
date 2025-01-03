@@ -766,6 +766,7 @@ update_task() {
     [ -n "$due_date" ] && due_date="${due_date//\'/\'\'}"
     [ -n "$end_date" ] && end_date="${end_date//\'/\'\'}"
     [ -n "$recurring_expression" ] && recurring_expression="${recurring_expression//\'/\'\'}"
+    [ -n "$interval_days" ] && interval_days="${interval_days//\'/\'\'}"
 
     # Prepare due_date_value and end_date_value
     [ -n "$due_date" ] && due_date_value="'$due_date'"
