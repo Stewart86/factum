@@ -3,7 +3,9 @@
 # TODO Application using SQLite and gum
 # Updated to add a CHECK constraint on due_date and validate date inputs
 
-DATABASE="${DATABASE:-todo.db}"
+DB_ROOT=$XDG_CONFIG_HOME || "$HOME/.config"
+
+DATABASE="${DATABASE:-$DB_ROOT/todo.db}"
 
 if command -v gdate >/dev/null 2>&1; then
     DATE_CMD="gdate"
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 EOF
 }
 
+# Function to join array elements with a delimiter
 join_by() {
     local IFS="$1"
     shift
@@ -283,13 +286,6 @@ explain_recurring_expression() {
         esac
     }
 
-    # Function to join array elements with a delimiter
-    join_by() {
-        local IFS="$1"
-        shift
-        echo "$*"
-    }
-
     # Interpret each field
     dom_desc=$(interpret_field "$dom_expr" "dom")
     mon_desc=$(interpret_field "$mon_expr" "mon")
@@ -441,7 +437,7 @@ add_task() {
         end_date=$(gum input --placeholder "Enter end date (YYYY-MM-DD), if any 🏁")
         recurring_type=$(gum choose "No recurrence" "Cron-like expression" "Interval in days" --header "Select the new recurrence type:")
         if [ "$recurring_type" = "Cron-like expression" ]; then
-            recurring_expression=$(gum input --placeholder "Enter new recurring expression (e.g., '1-5 * *') 🔁")
+            recurring_expression=$(gum input --placeholder "Enter new recurring expression (e.g., '1-5 * *')  ")
             interval_days=""
         elif [ "$recurring_type" = "Interval in days" ]; then
             interval_days=$(gum input --placeholder "Enter new interval in days (e.g., '14' for every 14 days)")
@@ -452,10 +448,13 @@ add_task() {
         fi
     fi
 
-    # Validate required fields
-    if [ -z "${title//[[:space:]]/}" ]; then
-        gum style --foreground 1 "❌ Title is required."
-        return
+    # Validate inputs
+    if [ -n "$title" ]; then
+        title=$(echo "$title" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        if [ -z "$title" ]; then
+            gum style --foreground 1 "❌ Title cannot be empty."
+            return
+        fi
     fi
 
     if [ -z "$recurring_expression" ]; then
@@ -467,24 +466,26 @@ add_task() {
         due_date=$($DATE_CMD '+%Y-%m-%d')
     fi
 
-    # Validate due_date format using regex
+    # Validate due_date format
     if [ -n "$due_date" ]; then
         if ! [[ "$due_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-            gum style --foreground 1 "❌ Invalid due date format. Please use YYYY-MM-DD."
+            gum style --foreground 1 "❌ Invalid date format. Please use YYYY-MM-DD."
             return
         fi
         if ! $DATE_CMD -d "$due_date" '+%Y-%m-%d' >/dev/null 2>&1; then
-            gum style --foreground 1 "❌ Invalid due date format. Please use YYYY-MM-DD."
+            gum style --foreground 1 "❌ Invalid date. Please enter a valid date."
             return
         fi
     fi
+
+    # Validate end_date format
     if [ -n "$end_date" ]; then
         if ! [[ "$end_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
             gum style --foreground 1 "❌ Invalid end date format. Please use YYYY-MM-DD."
             return
         fi
         if ! $DATE_CMD -d "$end_date" '+%Y-%m-%d' >/dev/null 2>&1; then
-            gum style --foreground 1 "❌ Invalid end date format. Please use YYYY-MM-DD."
+            gum style --foreground 1 "❌ Invalid end date. Please enter a valid date."
             return
         fi
     fi
@@ -524,25 +525,20 @@ add_task() {
         recurring_expression="none"
     fi
 
-    if [ -z "$due_date" ]; then
-        due_date_value="NULL"
-    else
-        due_date_value="'$due_date'"
-    fi
+    # Escape single quotes in inputs
+    [ -n "$title" ] && title="${title//\'/\'\'}"
+    [ -n "$description" ] && description="${description//\'/\'\'}"
+    [ -n "$due_date" ] && due_date="${due_date//\'/\'\'}"
+    [ -n "$end_date" ] && end_date="${end_date//\'/\'\'}"
+    [ -n "$recurring_expression" ] && recurring_expression="${recurring_expression//\'/\'\'}"
+    [ -n "$interval_days" ] && interval_days="${interval_days//\'/\'\'}"
 
-    if [ -z "$end_date" ]; then
-        end_date_value="NULL"
-    else
-        end_date_value="'$end_date'"
-    fi
+    # Prepare due_date_value and end_date_value
+    [ -n "$due_date" ] && due_date_value="'$due_date'"
+    [ -z "$due_date" ] && due_date_value="NULL"
 
-    # Sanitize inputs
-    title="${title//\'/\'\'}"
-    description="${description//\'/\'\'}"
-    due_date="${due_date//\'/\'\'}"
-    end_date="${end_date//\'/\'\'}"
-    recurring_expression="${recurring_expression//\'/\'\'}"
-    interval_days="${interval_days//\'/\'\'}"
+    [ -n "$end_date" ] && end_date_value="'$end_date'"
+    [ -z "$end_date" ] && end_date_value="NULL"
 
     # Insert into database
     sqlite3 "$DATABASE" <<EOF
@@ -565,7 +561,7 @@ list_tasks() {
     # If no status is provided, prompt the user to choose
     if [ -z "$1" ]; then
         # Use gum choose to let the user select the status
-        filter_status=$(gum choose "pending" "completed" "archived" "all" --header "Select tasks to list:")
+        filter_status=$(gum choose "today" "pending" "completed" "archived" "all" --header "Select tasks to list:")
     else
         filter_status="$1"
     fi
@@ -578,6 +574,9 @@ list_tasks() {
     all)
         status_condition=""
         ;;
+    today)
+        status_condition="(due_date = date('now') AND status = 'completed') OR status = 'pending' AND"
+        ;;
     *)
         gum style --foreground 1 "❌ Invalid status. Please choose pending, completed, archived, or all."
         return
@@ -585,7 +584,12 @@ list_tasks() {
     esac
 
     # Query the tasks based on the filter_status
-    tasks=$(sqlite3 -separator $'\t' "$DATABASE" "SELECT id, title, status, due_date, recurring_expression, interval_days FROM tasks WHERE $status_condition 1=1;")
+    tasks=$(sqlite3 -separator $'\t' "$DATABASE" "
+    SELECT id, title, status, due_date, recurring_expression, interval_days 
+    FROM tasks 
+    WHERE $status_condition 1=1 
+        AND (due_date <= date('now'))
+    ORDER BY status;")
 
     if [ -z "$tasks" ]; then
         gum style --foreground 1 "ℹ️ No tasks found."
@@ -605,10 +609,10 @@ list_tasks() {
     while IFS=$'\t' read -r id title status due_date recurring_expression interval_days; do
         # Assign status icon based on status
         case "$status" in
-        pending) status_icon="⏳" ;;
-        completed) status_icon="✅" ;;
-        archived) status_icon="📦" ;;
-        *) status_icon="❓" ;;
+        pending) status_icon="\033[38;2;200;0;0m\033[0m" ;;
+        completed) status_icon="\033[38;2;0;200;0m󰄲\033[0m" ;;
+        archived) status_icon="󰏗" ;;
+        *) status_icon="" ;;
         esac
 
         # Determine human-readable recurrence
@@ -622,22 +626,22 @@ list_tasks() {
 
         # Combine recurrence info with icon if applicable
         if [ "$human_readable_recurrence" != "—" ]; then
-            recurrence_info="🔁 $human_readable_recurrence"
+            recurrence_info=" $human_readable_recurrence"
         else
             recurrence_info="$human_readable_recurrence"
         fi
 
         # Append the formatted entry to the array
         # Each entry is a single string with fields separated by tabs
-        formatted_tasks+=("$status_icon,$id,$title,$recurrence_info,$due_date")
+        formatted_tasks+=("$status_icon|$id|$title|$recurrence_info|$due_date")
     done <<<"$tasks"
 
     # Prepare the header and combine with formatted tasks
-    header=",ID,Title,Recurrence,Due Date"
+    header="|ID|Title|Recurrence|Due Date"
     table_content=$(printf "%s\n" "${formatted_tasks[@]}")
 
     # Display tasks using gum table
-    echo -e "$header\n$table_content" | gum table --border normal --header.foreground 2 --print -s ","
+    echo -e "$header\n$table_content" | gum table --border normal --header.foreground 2 --print -s "|"
 }
 
 # Update a task
@@ -699,7 +703,7 @@ update_task() {
         end_date=$(gum input --placeholder "Enter new end date (YYYY-MM-DD), if any 🏁")
         recurring_type=$(gum choose "No recurrence" "Cron-like expression" "Interval in days" --header "Select the new recurrence type:")
         if [ "$recurring_type" = "Cron-like expression" ]; then
-            recurring_expression=$(gum input --placeholder "Enter new recurring expression (e.g., '1-5 * *') 🔁")
+            recurring_expression=$(gum input --placeholder "Enter new recurring expression (e.g., '1-5 * *')  ")
             interval_days=""
         elif [ "$recurring_type" = "Interval in days" ]; then
             interval_days=$(gum input --placeholder "Enter new interval in days (e.g., '14' for every 14 days)")
@@ -941,6 +945,7 @@ handle_recurring_tasks() {
         next_due_date=\$(echo \"\$next_due_date\" | sed \"s/'/''/g\")
         end_date=\$(echo \"\$end_date\" | sed \"s/'/''/g\")
         recurring_expression=\$(echo \"\$recurring_expression\" | sed \"s/'/''/g\")
+        interval_days=\$(echo \"\$interval_days\" | sed \"s/'/''/g\")
 
         # Insert new task
         sqlite3 \"$DATABASE\" <<SQL
@@ -969,7 +974,7 @@ show_help() {
     echo "    -D, --due-date         Due date (YYYY-MM-DD)"
     echo "    -r, --recurring        Recurring expression (e.g., '1-5 * *', '* 6-8 *', '* * 1,3,5')"
     echo
-    echo "  --list [status]      📋 List tasks (status can be pending, completed, archived)"
+    echo "  --list [status]      📋 List tasks (status can be pending, completed, archived or all)"
     echo
     echo "  --update <ID>        ✏️ Update a task"
     echo "    -t, --title            New task title"
