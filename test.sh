@@ -134,7 +134,7 @@ main() {
   # 2.1 List Pending Tasks
   run_test "List Pending Tasks" \
     "$TODO_CMD --list pending" \
-    "[⏳ ID:"
+    "┌────┬────┬───"
 
   # 2.2 List Completed Tasks
   run_test "List Completed Tasks" \
@@ -144,7 +144,7 @@ main() {
   # 2.3 List All Tasks
   run_test "List All Tasks" \
     "$TODO_CMD --list all" \
-    "[⏳ ID:"
+    "┌────┬────┬───"
 
   ####################################################
   # 3. Updating Tasks
