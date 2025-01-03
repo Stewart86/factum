@@ -436,7 +436,17 @@ add_task() {
         description=$(gum input --placeholder "Enter task description 📝")
         due_date=$(gum input --placeholder "Enter due date (YYYY-MM-DD) 📅")
         end_date=$(gum input --placeholder "Enter end date (YYYY-MM-DD), if any 🏁")
-        recurring_expression=$(gum input --placeholder "Enter recurring expression (e.g., '1-5 * *') 🔁")
+        recurring_type=$(gum choose "No recurrence" "Cron-like expression" "Interval in days" --header "Select the new recurrence type:")
+        if [ "$recurring_type" = "Cron-like expression" ]; then
+            recurring_expression=$(gum input --placeholder "Enter new recurring expression (e.g., '1-5 * *') 🔁")
+            interval_days=""
+        elif [ "$recurring_type" = "Interval in days" ]; then
+            interval_days=$(gum input --placeholder "Enter new interval in days (e.g., '14' for every 14 days)")
+            recurring_expression="none"
+        else
+            recurring_expression="none"
+            interval_days=""
+        fi
     fi
 
     # Validate required fields
@@ -447,6 +457,11 @@ add_task() {
 
     if [ -z "$recurring_expression" ]; then
         recurring_expression="none"
+    fi
+
+    # if due date is not provided, set it to today
+    if [ -z "$due_date" ]; then
+        due_date=$($DATE_CMD '+%Y-%m-%d')
     fi
 
     # Validate due_date format using regex
@@ -524,6 +539,7 @@ add_task() {
     due_date="${due_date//\'/\'\'}"
     end_date="${end_date//\'/\'\'}"
     recurring_expression="${recurring_expression//\'/\'\'}"
+    interval_days="${interval_days//\'/\'\'}"
 
     # Insert into database
     sqlite3 "$DATABASE" <<EOF
@@ -531,11 +547,18 @@ INSERT INTO tasks (title, description, due_date, end_date, recurring_expression,
 VALUES ('$title', '$description', $due_date_value, $end_date_value, '$recurring_expression', ${interval_days:-NULL}, 'pending');
 EOF
 
+    list_tasks pending
     gum style --foreground 212 "✅ Task added successfully!"
 }
 
 # List tasks
 list_tasks() {
+    # Ensure DATABASE is defined
+    if [ -z "$DATABASE" ]; then
+        echo "❌ DATABASE variable is not set."
+        return 1
+    fi
+
     # If no status is provided, prompt the user to choose
     if [ -z "$1" ]; then
         # Use gum choose to let the user select the status
@@ -566,8 +589,18 @@ list_tasks() {
         return
     fi
 
-    # Display tasks
-    echo "$tasks" | while IFS=$'\t' read -r id title status due_date recurring_expression interval_days; do
+    # Ensure the explain_recurring_expression function is defined
+    if ! declare -f explain_recurring_expression >/dev/null; then
+        gum style --foreground 1 "❌ The function 'explain_recurring_expression' is not defined."
+        return
+    fi
+
+    # Initialize an array to hold formatted task entries
+    formatted_tasks=()
+
+    # Read tasks line by line
+    while IFS=$'\t' read -r id title status due_date recurring_expression interval_days; do
+        # Assign status icon based on status
         case "$status" in
         pending) status_icon="⏳" ;;
         completed) status_icon="✅" ;;
@@ -575,17 +608,33 @@ list_tasks() {
         *) status_icon="❓" ;;
         esac
 
-        # Get human-readable recurrence
-        if [ -n "$interval_days" ]; then
+        # Determine human-readable recurrence
+        if [ -n "$interval_days" ] && [ "$interval_days" -ne 0 ]; then
             human_readable_recurrence="Every $interval_days day(s)"
         elif [ "$recurring_expression" != "none" ] && [ -n "$recurring_expression" ]; then
             human_readable_recurrence=$(explain_recurring_expression "$recurring_expression")
         else
-            human_readable_recurrence=""
+            human_readable_recurrence="—"
         fi
-        [ -n "$human_readable_recurrence" ] && recurring_info="🔁 $human_readable_recurrence"
-        gum style --bold "[$status_icon ID: $id] $title $recurring_info 📅 Due: $due_date"
-    done
+
+        # Combine recurrence info with icon if applicable
+        if [ "$human_readable_recurrence" != "—" ]; then
+            recurrence_info="🔁 $human_readable_recurrence"
+        else
+            recurrence_info="$human_readable_recurrence"
+        fi
+
+        # Append the formatted entry to the array
+        # Each entry is a single string with fields separated by tabs
+        formatted_tasks+=("$status_icon,$id,$title,$recurrence_info,$due_date")
+    done <<<"$tasks"
+
+    # Prepare the header and combine with formatted tasks
+    header=",ID,Title,Recurrence,Due Date"
+    table_content=$(printf "%s\n" "${formatted_tasks[@]}")
+
+    # Display tasks using gum table
+    echo -e "$header\n$table_content" | gum table --border normal --header.foreground 2 --print -s ","
 }
 
 # Update a task
