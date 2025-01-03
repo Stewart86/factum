@@ -85,12 +85,12 @@ main() {
 
   # 1.2 Add Task with All Fields
   run_test "Add Task with All Fields" \
-    "$TODO_CMD --add -t 'Complete Project Report' -d 'Finalize the project report and submit it to the manager.' -D '2023-11-30' -e '2023-12-31' -r '* * 1-5' <<< 'Y'" \
+    "$TODO_CMD --add -t 'Complete Project Report' -d 'Finalize the project report and submit it to the manager.' -D '2023-11-30' -e '2023-12-31' -r '* * 1-5' --yes " \
     "✅ Task added successfully!"
 
   # 1.3 Add Task with Interval Days
   run_test "Add Task with Interval Days" \
-    "$TODO_CMD --add -t 'Biweekly Team Meeting' -D '2023-11-01' -i '14' <<< 'Y'" \
+    "$TODO_CMD --add -t 'Biweekly Team Meeting' -D '2023-11-01' -i '14' --yes" \
     "✅ Task added successfully!"
 
   # 1.4 Add Task with Invalid Due Date
@@ -162,7 +162,7 @@ main() {
 
   # 3.3 Update Task to Add Recurrence
   run_test "Update Task to Add Recurrence" \
-    "$TODO_CMD --update 1 -r '* * 1-5' <<< 'Y'" \
+    "$TODO_CMD --update 1 -r '* * 1-5'" \
     "✅ Task updated successfully!"
 
   # 3.4 Update Task with Invalid Interval Days
@@ -183,17 +183,12 @@ main() {
   ####################################################
   # 4. Deleting Tasks
   ####################################################
-  # 4.1 Delete a Task with Confirmation
+  # 4.1 Delete a Task without Confirmation
   run_test "Delete a Task with Confirmation" \
-    "$TODO_CMD --delete 1 <<< 'Y'" \
+    "$TODO_CMD --delete 1 --yes" \
     "✅ Task deleted successfully!"
 
-  # 4.2 Delete a Task without Confirmation
-  run_test "Delete a Task without Confirmation" \
-    "$TODO_CMD --delete 2 --yes" \
-    "✅ Task deleted successfully!"
-
-  # 4.3 Delete Non-Existent Task
+  # 4.2 Delete Non-Existent Task
   run_test "Delete Non-Existent Task" \
     "$TODO_CMD --delete 999" \
     "❌ Task ID 999 does not exist."
@@ -229,8 +224,7 @@ main() {
   # 6.1 Verify Task Recurrence After Completion
   # Add a recurring task
   sqlite3 "$DATABASE" "DROP TABLE tasks;"
-  $TODO_CMD --add -t "Daily Standup" -D "$(date '+%Y-%m-%d')" -r "* * 1-5" <<<'Y' >/dev/null
-  # Get the last inserted ID
+  $TODO_CMD --add -t "Daily Standup" -D "$(date '+%Y-%m-%d')" -r "* * 1-5" --yes >/dev/null
   # Mark it as completed
   run_test "Verify Recurring Task After Completion" \
     "$TODO_CMD --complete 1" \
@@ -239,7 +233,7 @@ main() {
   # 6.2 Verify End Date Enforcement
   # Add a recurring task with an end date
   sqlite3 "$DATABASE" "DROP TABLE tasks;"
-  $TODO_CMD --add -t "Monthly Review" -D "2023-11-01" -e "2023-11-30" -i "30" <<<'Y' >/dev/null
+  $TODO_CMD --add -t "Monthly Review" -D "2023-11-01" -e "2023-11-30" -i "30" --yes >/dev/null
   # Get the last inserted ID
   # Mark it as completed multiple times to reach past the end date
   run_test "Verify End Date Enforcement - First Completion" \

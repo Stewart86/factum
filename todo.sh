@@ -421,6 +421,9 @@ add_task() {
                 interval_days="$2"
                 shift
                 ;;
+            -y | --yes)
+                confirm="true"
+                ;;
 
             *)
                 echo "❌ Unknown parameter passed: $1"
@@ -501,7 +504,7 @@ add_task() {
             return
         fi
         human_readable_recurrence="Every $interval_days day(s)"
-        if ! gum confirm "The task is set to recur: $human_readable_recurrence. Is this correct?"; then
+        if [ "$confirm" != "true" ] && ! gum confirm "The task is set to recur: $human_readable_recurrence. Is this correct?"; then
             gum style --foreground 3 "❌ Task not added. Please try again with the correct interval."
             return
         fi
@@ -513,7 +516,7 @@ add_task() {
         fi
 
         human_readable_recurrence=$(explain_recurring_expression "$recurring_expression")
-        if ! gum confirm "The task is set to recur: $human_readable_recurrence. Is this correct?"; then
+        if [ "$confirm" != "true" ] && ! gum confirm "The task is set to recur: $human_readable_recurrence. Is this correct?"; then
             gum style --foreground 3 "❌ Task not added. Please try again with the correct recurrence."
             return
         fi
